@@ -1,4 +1,4 @@
-import type Logger from "../logs/index.ts";
+import type Logger from "../logs/index.js";
 
 type EventHandler<T extends any[]> = (...args: T) => void;
 
