@@ -3,16 +3,20 @@
   "displayName": "Tico Basics",
   "version": "1.0.0",
   "description": "Just basic stuff that I use in all my projects",
-  "keywords": [
-    "tico09"
-  ],
+  "keywords": ["tico09"],
   "license": "AGPL-3.0-only",
   "author": "tiaguinho2009",
   "type": "module",
   "main": "dist/index.js",
-  "files": [
-    "dist"
-  ],
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": ["dist"],
   "scripts": {
     "build": "npx tsc"
   },

@@ -93,7 +93,17 @@ export default class EventSystem<E extends { [K in keyof E]: any[] }> {
 			maxListeners: Infinity,
 			...options,
 		};
-        this.log = logger;
+
+		// Use the provided logger directly to avoid creating a child logger here.
+		// Creating a child would instantiate another Logger which in turn
+		// constructs its own EventSystem, causing infinite recursion.
+		this.log = logger;
+
+		// Avoid using `Logger` methods during construction because the
+		// `Logger` may lazily create its `EventSystem`, which would call
+		// this constructor again and lead to infinite recursion. Use the
+		// console for a lightweight, non-recursive initialization message.
+		console.log("EventSystem initialized with options:", this.options);
 	}
 
 	/**
@@ -111,11 +121,14 @@ export default class EventSystem<E extends { [K in keyof E]: any[] }> {
 			this.listeners.set(event, set);
 		}
 
-		if (set.size >= this.options.maxListeners) {
+		if (set.size >= this.options.maxListeners && this.options.warnOnNoListeners) {
 			this.log.warn("Max listeners exceeded for", event);
 		}
 
 		set.add(handler);
+		if (this.options.debug) {
+			this.log.log("Listener added to event:", event, "| Total:", set.size);
+		}
 		return () => this.off(event, handler);
 	}
 
@@ -167,6 +180,9 @@ export default class EventSystem<E extends { [K in keyof E]: any[] }> {
 		if (!set) return;
 
 		set.delete(handler);
+		if (this.options.debug) {
+			this.log.log("Listener removed from event:", event, "| Remaining:", set.size);
+		}
 
 		if (set.size === 0) {
 			this.listeners.delete(event);
@@ -192,12 +208,18 @@ export default class EventSystem<E extends { [K in keyof E]: any[] }> {
 
 		const { catchErrors } = this.options;
 
+		if (this.options.debug) {
+			this.log.log("Emitting event:", event, "| Listeners:", set.size);
+		}
+
 		for (const handler of set) {
 			if (catchErrors) {
 				try {
 					handler(...args);
 				} catch (err) {
-					this.log.error(0, "Handler crashed for", event, err);
+					if (this.options.catchErrors) {
+						this.log.error(0, "Handler crashed for", event, err);
+					}
 				}
 			} else {
 				handler(...args);
@@ -218,6 +240,10 @@ export default class EventSystem<E extends { [K in keyof E]: any[] }> {
 	async emitAsync<K extends keyof E>(event: K, ...args: E[K]): Promise<boolean> {
 		const set = this.listeners.get(event);
 		if (!set || set.size === 0) return false;
+
+		if (this.options.debug) {
+			this.log.log("Async emit:", event, "| Listeners:", set.size);
+		}
 
 		await Promise.all(
 			[...set].map(async (handler) => handler(...args))

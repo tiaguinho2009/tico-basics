@@ -1,4 +1,14 @@
 import chalk from "chalk";
+import EventSystem from "../events/index.js";
+
+export type LoggerEvents = {
+    log: [parentContext: string[], ...args: any[]];
+    info: [parentContext: string[], ...args: any[]];
+    success: [parentContext: string[], ...args: any[]];
+    warn: [parentContext: string[], ...args: any[]];
+    error: [parentContext: string[], level: 0 | 1 | 2, ...args: any[]];
+    print: [label: string, colorFn: (msg: string) => string, messages: any[], output: "log" | "info" | "warn" | "error"];
+}
 
 /**
  * Configuration options for the {@link Logger}.
@@ -29,20 +39,36 @@ export type LoggerOptions = {
  * ```
  */
 export default class Logger {
+    private context: string[];
+    private options: LoggerOptions;
+    private timers = new Map<string, number>();
+    private groupLevel = 0;
+
+    public events = new EventSystem<LoggerEvents>({
+        debug: false,
+        warnOnNoListeners: false,
+        catchErrors: false
+    }, this) as EventSystem<LoggerEvents>;
+
     /**
      * Creates a new Logger instance.
      *
-     * @param name - The application or module name used as log prefix.
+     * @param name - The application or module context used as log prefix.
      * @param options - Optional logger configuration.
+     * @param parentContext - Parent logger context for child loggers.
      */
-    constructor(private name: string, private options: LoggerOptions = {}) {
+    constructor(name: string, options: LoggerOptions = {}, parentContext?: string[]) {
         this.options = {
             clearOnInit: true,
             useTimestamps: true,
             ...options,
         };
 
-        if (this.options.clearOnInit) {
+        this.context = parentContext
+            ? [...parentContext, name]
+            : [name];
+
+        if (!parentContext && this.options.clearOnInit) {
             console.clear();
         }
     }
@@ -83,18 +109,47 @@ export default class Logger {
     public print(
         label: string,
         colorFn: (msg: string) => string,
-        ...messages: unknown[]
+        messages: any[],
+        output: "log" | "info" | "warn" | "error" = "log"
     ): void {
+        if (messages.length === 0) {
+            this.warn(["Logger.print called without messages"]);
+            return;
+        }
+
         const timestamp = this.options.useTimestamps
             ? `[${this.getTimestamp()}] `
             : "";
 
-        const prefix =
-            `${timestamp}[${this.name}${label ? ` | ${label}` : ""}]`;
+        const contextString = this.context.join(" | ");
 
-        messages.forEach((msg) =>
-            console.log(colorFn(prefix), this.formatMessage(msg))
-        );
+        const indent = "  ".repeat(this.groupLevel);
+        const prefix = `${timestamp}[${contextString}${label ? ` | ${label}` : ""}]`;
+
+        let finalOutput = indent + prefix;
+
+        if (messages.length > 1) {
+            messages.forEach((msg) => {
+                finalOutput += "\n" + this.formatMessage(msg);
+            });
+        } else if (messages.length === 1) {
+            finalOutput += " " + this.formatMessage(messages[0]);
+        }
+
+        if (output === "log") {
+            console.log(colorFn(finalOutput));
+        }
+        if (output === "info") {
+            console.info(colorFn(finalOutput));
+        }
+        if (output === "warn") {
+            console.warn(colorFn(finalOutput));
+        }
+        if (output === "error") {
+            console.error(colorFn(finalOutput));
+        }
+
+        this.events.emit("print", label, colorFn, messages, output);
     }
 
     /**
@@ -102,8 +157,9 @@ export default class Logger {
      *
      * @param messages - Messages to log.
      */
-    public log(...messages: unknown[]): void {
-        this.print("", chalk.blue, ...messages);
+    public log(...messages: any[]): void {
+        this.print("", chalk.blue, messages);
+        this.events.emit("log", this.context, ...messages);
     }
 
     /**
@@ -111,8 +167,9 @@ export default class Logger {
      *
      * @param messages - Messages to log.
      */
-    public info(...messages: unknown[]): void {
-        this.print("INFO", chalk.cyan, ...messages);
+    public info(...messages: any[]): void {
+        this.print("INFO", chalk.cyan, messages);
+        this.events.emit("info", this.context, ...messages);
     }
 
     /**
@@ -120,8 +177,9 @@ export default class Logger {
      *
      * @param messages - Messages to log.
      */
-    public success(...messages: unknown[]): void {
-        this.print("SUCCESS", chalk.green, ...messages);
+    public success(...messages: any[]): void {
+        this.print("SUCCESS", chalk.green, messages);
+        this.events.emit("success", this.context, ...messages);
     }
 
     /**
@@ -129,8 +187,9 @@ export default class Logger {
      *
      * @param messages - Messages to log.
      */
-    public warn(...messages: unknown[]): void {
-        this.print("WARNING", chalk.yellow, ...messages);
+    public warn(...messages: any[]): void {
+        this.print("WARNING", chalk.yellow, messages, "error");
+        this.events.emit("warn", this.context, ...messages);
     }
 
     /**
@@ -139,11 +198,11 @@ export default class Logger {
      * @param level - Error severity level:
      * - `0` → ERROR
      * - `1` → CRITICAL ERROR
-     * - `2` → FATAL ERROR
+     * - `2` → FATAL ERRORlevel
      *
      * @param messages - One or more error messages.
      */
-    public error(level: 0 | 1 | 2 = 0, ...messages: unknown[]): void {
+    public error(level: 0 | 1 | 2 = 0, ...messages: any[]): void {
         const colorFn =
             level === 0
                 ? chalk.red
@@ -158,7 +217,8 @@ export default class Logger {
                 ? "CRITICAL ERROR"
                 : "FATAL ERROR";
 
-        this.print(label, colorFn, ...messages);
+        this.print(label, colorFn, messages, "error");
+        this.events.emit("error", this.context, level, ...messages);
     }
 
     /**
@@ -166,6 +226,71 @@ export default class Logger {
      */
     public clear(): void {
         console.clear();
+    }
+
+    public time(label: string): void {
+        this.timers.set(label, performance.now());
+        this.print("TIMER START", chalk.magenta, [`${label} started`]);
+    }
+
+    public timeLog(label: string): void {
+        const start = this.timers.get(label);
+        if (!start) {
+            this.warn(`Timer "${label}" does not exist.`);
+            return;
+        }
+
+        const duration = performance.now() - start;
+        this.print("TIMER", chalk.magentaBright, [
+            `${label}: ${duration.toFixed(2)}ms`
+        ]);
+    }
+
+    public timeEnd(label: string): void {
+        const start = this.timers.get(label);
+        if (!start) {
+            this.warn(`Timer "${label}" does not exist.`);
+            return;
+        }
+
+        const duration = performance.now() - start;
+        this.timers.delete(label);
+
+        this.print("TIMER END", chalk.magenta, [
+            `${label}: ${duration.toFixed(2)}ms`
+        ]);
+    }
+
+    public table(data: any, ...properties: string[]): void {
+        if (!data) {
+            this.warn("No data provided to table()");
+            return;
+        }
+
+        const formatted =
+            typeof data === "object"
+                ? JSON.stringify(data, null, 2)
+                : String(data);
+
+        this.print("TABLE", chalk.white, [formatted]);
+    }
+
+    /**
+     * Creates a child logger that inherits this logger's configuration
+     * and extends its context.
+     *
+     * @param name - Child context name.
+     * @returns A new Logger instance.
+     */
+    public child(name: string): Logger {
+        return new Logger(
+            name,
+            {
+                ...this.options,
+                clearOnInit: false,
+            },
+            this.context
+        );
     }
 
     /**
