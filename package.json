@@ -1,5 +1,5 @@
 {
-  "name": "@tiaguinho2009/tico-basics",
+  "name": "tico-basics",
   "displayName": "Tico Basics",
   "version": "1.0.0",
   "description": "Just basic stuff that I use in all my projects",
@@ -9,12 +9,21 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "private": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tiaguinho2009/tico-basics.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tiaguinho2009/tico-basics/issues"
+  },
+  "homepage": "https://github.com/tiaguinho2009/tico-basics#readme",
   "sideEffects": false,
   "files": ["dist"],
   "scripts": {
