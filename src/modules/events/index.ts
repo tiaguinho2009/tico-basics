@@ -1,6 +1,7 @@
 import type Logger from "../logs/index.js";
 
-type EventHandler<T extends any[]> = (...args: T) => void;
+export type EventHandler<T extends unknown[]> =
+    (...args: T) => void | Promise<void>;
 
 type EventSystemOptions = {
 	debug?: boolean;
