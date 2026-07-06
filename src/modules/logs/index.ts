@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import { inspect } from "node:util";
 import EventSystem from "../events/index.js";
 
 export type LoggerEvents = {
@@ -7,7 +8,7 @@ export type LoggerEvents = {
     success: [parentContext: string[], ...args: any[]];
     warn: [parentContext: string[], ...args: any[]];
     error: [parentContext: string[], level: 0 | 1 | 2, ...args: any[]];
-    print: [label: string, colorFn: (msg: string) => string, messages: any[], output: "log" | "info" | "warn" | "error"];
+    print: [label: string, colorFn: (msg: string) => string, messages: unknown[], output: "log" | "info" | "warn" | "error"];
 }
 
 /**
@@ -94,9 +95,15 @@ export default class Logger {
      * @returns The formatted message.
      */
     private formatMessage(msg: unknown): string {
-        return typeof msg === "object"
-            ? JSON.stringify(msg, null, 2)
-            : String(msg);
+        if (msg instanceof Error) {
+            return msg.stack ?? `${msg.name}: ${msg.message}`;
+        }
+
+        return inspect(msg, {
+            depth: Infinity,
+            colors: false,
+            compact: false,
+        });
     }
 
     /**
@@ -109,47 +116,51 @@ export default class Logger {
     public print(
         label: string,
         colorFn: (msg: string) => string,
-        messages: any[],
+        messages: unknown[],
         output: "log" | "info" | "warn" | "error" = "log"
     ): void {
-        if (messages.length === 0) {
-            this.warn(["Logger.print called without messages"]);
-            return;
+        try {
+            if (messages.length === 0) {
+                this.warn(["Logger.print called without messages"]);
+                return;
+            }
+
+            const timestamp = this.options.useTimestamps
+                ? `[${this.getTimestamp()}] `
+                : "";
+
+            const contextString = this.context.join(" | ");
+
+            const indent = "  ".repeat(this.groupLevel);
+            const prefix = `${timestamp}[${contextString}${label ? ` | ${label}` : ""}]`;
+
+            let finalOutput = indent + prefix;
+
+            if (messages.length > 1) {
+                messages.forEach((msg) => {
+                    finalOutput += "\n" + this.formatMessage(msg);
+                });
+            } else if (messages.length === 1) {
+                finalOutput += " " + this.formatMessage(messages[0]);
+            }
+
+            if (output === "log") {
+                console.log(colorFn(finalOutput));
+            }
+            if (output === "info") {
+                console.info(colorFn(finalOutput));
+            }
+            if (output === "warn") {
+                console.warn(colorFn(finalOutput));
+            }
+            if (output === "error") {
+                console.error(colorFn(finalOutput));
+            }
+
+            this.events.emit("print", label, colorFn, messages, output);
+        } catch (err) {
+            console.error("Logger internal error:", err);
         }
-
-        const timestamp = this.options.useTimestamps
-            ? `[${this.getTimestamp()}] `
-            : "";
-
-        const contextString = this.context.join(" | ");
-
-        const indent = "  ".repeat(this.groupLevel);
-        const prefix = `${timestamp}[${contextString}${label ? ` | ${label}` : ""}]`;
-
-        let finalOutput = indent + prefix;
-
-        if (messages.length > 1) {
-            messages.forEach((msg) => {
-                finalOutput += "\n" + this.formatMessage(msg);
-            });
-        } else if (messages.length === 1) {
-            finalOutput += " " + this.formatMessage(messages[0]);
-        }
-
-        if (output === "log") {
-            console.log(colorFn(finalOutput));
-        }
-        if (output === "info") {
-            console.info(colorFn(finalOutput));
-        }
-        if (output === "warn") {
-            console.warn(colorFn(finalOutput));
-        }
-        if (output === "error") {
-            console.error(colorFn(finalOutput));
-        }
-
-        this.events.emit("print", label, colorFn, messages, output);
     }
 
     /**
@@ -157,7 +168,7 @@ export default class Logger {
      *
      * @param messages - Messages to log.
      */
-    public log(...messages: any[]): void {
+    public log(...messages: unknown[]): void {
         this.print("", chalk.blue, messages);
         this.events.emit("log", this.context, ...messages);
     }
@@ -167,7 +178,7 @@ export default class Logger {
      *
      * @param messages - Messages to log.
      */
-    public info(...messages: any[]): void {
+    public info(...messages: unknown[]): void {
         this.print("INFO", chalk.cyan, messages);
         this.events.emit("info", this.context, ...messages);
     }
@@ -177,7 +188,7 @@ export default class Logger {
      *
      * @param messages - Messages to log.
      */
-    public success(...messages: any[]): void {
+    public success(...messages: unknown[]): void {
         this.print("SUCCESS", chalk.green, messages);
         this.events.emit("success", this.context, ...messages);
     }
@@ -187,8 +198,8 @@ export default class Logger {
      *
      * @param messages - Messages to log.
      */
-    public warn(...messages: any[]): void {
-        this.print("WARNING", chalk.yellow, messages, "error");
+    public warn(...messages: unknown[]): void {
+        this.print("WARNING", chalk.yellow, messages, "warn");
         this.events.emit("warn", this.context, ...messages);
     }
 
@@ -202,7 +213,7 @@ export default class Logger {
      *
      * @param messages - One or more error messages.
      */
-    public error(level: 0 | 1 | 2 = 0, ...messages: any[]): void {
+    public error(level: 0 | 1 | 2 = 0, ...messages: unknown[]): void {
         const colorFn =
             level === 0
                 ? chalk.red
