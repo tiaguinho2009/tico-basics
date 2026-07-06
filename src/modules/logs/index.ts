@@ -201,17 +201,22 @@ export default class Logger {
     private getCaller(): string | undefined {
         const stack = new Error().stack;
 
-        if (!stack)
-            return;
+        if (!stack) return;
 
-        const lines = stack.split("\n");
+        const lines = stack.split("\n").slice(1);
 
-        return lines
-            .find(line =>
-                !line.includes("Logger.")
-                && !line.includes("node_modules")
-            )
-            ?.trim();
+        for (const line of lines) {
+            if (
+                line.includes("/logs/") ||
+                line.includes("\\logs\\") ||
+                line.includes("Logger.") ||
+                line.includes("node_modules")
+            ) {
+                continue;
+            }
+
+            return line.trim();
+        }
     }
 
     /**
