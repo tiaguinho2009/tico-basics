@@ -15,17 +15,32 @@ export type LoggerEvents = {
  * Configuration options for the {@link Logger}.
  */
 export type LoggerOptions = {
-    /**
-     * Clears the console when the logger is initialized.
-     * @default true
-     */
     clearOnInit?: boolean;
+    useTimestamps?: boolean;
 
     /**
-     * Enables timestamps in log messages.
+     * Displays multiple messages using tree formatting.
      * @default true
      */
-    useTimestamps?: boolean;
+    formatMultipleMessages?: boolean;
+
+    /**
+     * Shows the type before non-string values.
+     * @default false
+     */
+    showTypes?: boolean;
+
+    /**
+     * Shows where the logger call originated from.
+     * @default false
+     */
+    debug?: boolean;
+
+    /**
+     * Detects promises passed directly to the logger.
+     * @default true
+     */
+    detectPromises?: boolean;
 };
 
 /**
@@ -62,6 +77,10 @@ export default class Logger {
         this.options = {
             clearOnInit: true,
             useTimestamps: true,
+            formatMultipleMessages: true,
+            showTypes: false,
+            debug: false,
+            detectPromises: true,
             ...options,
         };
 
@@ -88,18 +107,82 @@ export default class Logger {
     }
 
     /**
-     * Formats a message for logging.
-     * Objects are stringified with indentation.
+     * Formats an {@link Error} into a readable string.
      *
-     * @param msg - The message to format.
-     * @returns The formatted message.
+     * Includes the error name, message, stack trace and recursively
+     * formats the {@link Error.cause | cause}, if present.
+     *
+     * @param error - The error to format.
+     * @returns A formatted error string.
+     */
+    private formatError(error: Error): string {
+        let output = "";
+
+        output += `${chalk.red(error.name)}: ${error.message}`;
+
+        if (error.stack) {
+            const stack = error.stack
+                .split("\n")
+                .slice(1)
+                .map(line => chalk.gray(line))
+                .join("\n");
+
+            output += "\n" + stack;
+        }
+
+
+        if (error.cause) {
+            output += "\n\n" + chalk.yellow("Caused by:");
+
+            output += "\n" + this.formatMessage(error.cause);
+        }
+
+        return output;
+    }
+
+    /**
+     * Determines whether a value is Promise-like.
+     *
+     * Used to detect accidentally logged promises,
+     * which usually indicates a missing `await`.
+     *
+     * @param value - The value to test.
+     * @returns `true` if the value is Promise-like, otherwise `false`.
+     */
+    private isPromise(value: unknown): boolean {
+        return (
+            typeof value === "object" &&
+            value !== null &&
+            typeof (value as Promise<unknown>).then === "function"
+        );
+    }
+
+    /**
+     * Formats a value into a human-readable string.
+     *
+     * Handles {@link Error} objects, Promise detection and
+     * optional type prefixes before delegating formatting
+     * to {@link inspect}.
+     *
+     * @param msg - The value to format.
+     * @returns The formatted string representation.
      */
     private formatMessage(msg: unknown): string {
         if (msg instanceof Error) {
-            return msg.stack ?? `${msg.name}: ${msg.message}`;
+            return this.formatError(msg);
         }
 
-        return inspect(msg, {
+        if (this.options.detectPromises && this.isPromise(msg)) {
+            return chalk.yellow(
+                "[Promise detected] Did you forget to await?"
+            );
+        }
+
+        const type = this.options.showTypes
+            ? chalk.gray(`[${typeof msg}] `)
+            : "";
+
+        return type + inspect(msg, {
             depth: Infinity,
             colors: false,
             compact: false,
@@ -107,11 +190,44 @@ export default class Logger {
     }
 
     /**
-     * Prints a formatted log message with a custom label and color.
+     * Attempts to determine the location where the logger
+     * was called from by inspecting the current stack trace.
      *
-     * @param label - Prefix label (e.g., INFO, ERROR).
-     * @param colorFn - Chalk color function applied to the prefix.
-     * @param messages - One or more messages to log.
+     * Internal logger frames and dependencies are ignored.
+     *
+     * @returns The caller stack frame, or `undefined`
+     * if it cannot be determined.
+     */
+    private getCaller(): string | undefined {
+        const stack = new Error().stack;
+
+        if (!stack)
+            return;
+
+        const lines = stack.split("\n");
+
+        return lines
+            .find(line =>
+                !line.includes("Logger.")
+                && !line.includes("node_modules")
+            )
+            ?.trim();
+    }
+
+    /**
+     * Prints a formatted log message.
+     *
+     * Handles timestamps, context prefixes, optional caller
+     * information, multi-message formatting and dispatches
+     * the final output to the appropriate console method.
+     *
+     * If an internal logger error occurs, it falls back to
+     * `console.error()` to avoid hiding the original problem.
+     *
+     * @param label - Prefix label (e.g. INFO, ERROR).
+     * @param colorFn - Chalk color function applied to the output.
+     * @param messages - One or more values to log.
+     * @param output - Console output method to use.
      */
     public print(
         label: string,
@@ -136,8 +252,24 @@ export default class Logger {
 
             let finalOutput = indent + prefix;
 
-            if (messages.length > 1) {
-                messages.forEach((msg) => {
+            if (this.options.debug) {
+                const caller = this.getCaller();
+
+                if (caller) {
+                    finalOutput += "\n" + chalk.gray(`↳ ${caller}`);
+                }
+            }
+
+            if (messages.length > 1 && this.options.formatMultipleMessages) {
+                messages.forEach((msg, index) => {
+                    const last = index === messages.length - 1;
+
+                    finalOutput += "\n";
+                    finalOutput += last ? "└─ " : "├─ ";
+                    finalOutput += this.formatMessage(msg);
+                });
+            } else if (messages.length > 1) {
+                messages.forEach(msg => {
                     finalOutput += "\n" + this.formatMessage(msg);
                 });
             } else if (messages.length === 1) {
@@ -239,11 +371,22 @@ export default class Logger {
         console.clear();
     }
 
+    /**
+     * Starts a named performance timer.
+     *
+     * @param label - Unique timer identifier.
+     */
     public time(label: string): void {
         this.timers.set(label, performance.now());
         this.print("TIMER START", chalk.magenta, [`${label} started`]);
     }
 
+    /**
+     * Logs the current elapsed time of a running timer
+     * without stopping it.
+     *
+     * @param label - Timer identifier.
+     */
     public timeLog(label: string): void {
         const start = this.timers.get(label);
         if (!start) {
@@ -257,6 +400,11 @@ export default class Logger {
         ]);
     }
 
+    /**
+     * Stops a running timer and logs its total duration.
+     *
+     * @param label - Timer identifier.
+     */
     public timeEnd(label: string): void {
         const start = this.timers.get(label);
         if (!start) {
@@ -272,6 +420,15 @@ export default class Logger {
         ]);
     }
 
+    /**
+     * Displays data in a tabular format.
+     *
+     * This is intended for arrays of objects or plain objects
+     * where a table representation improves readability.
+     *
+     * @param data - The data to display.
+     * @param properties - Optional property names to include.
+     */
     public table(data: any, ...properties: string[]): void {
         if (!data) {
             this.warn("No data provided to table()");
@@ -287,7 +444,7 @@ export default class Logger {
     }
 
     /**
-     * Creates a child logger that inherits this logger's configuration
+     * Creates a child {@link Logger} that inherits this logger's configuration
      * and extends its context.
      *
      * @param name - Child context name.
