@@ -41,6 +41,12 @@ export type LoggerOptions = {
      * @default true
      */
     detectPromises?: boolean;
+
+    /**
+     * Warns when source maps may not be enabled.
+     * @default true
+     */
+    sourceMapWarning?: boolean;
 };
 
 /**
@@ -81,6 +87,7 @@ export default class Logger {
             showTypes: false,
             debug: false,
             detectPromises: true,
+            sourceMapWarning: true,
             ...options,
         };
 
@@ -189,6 +196,33 @@ export default class Logger {
         });
     }
 
+    private warnedAboutSourceMaps = false;
+
+    private checkSourceMaps(stack?: string): void {
+        if (this.warnedAboutSourceMaps || !stack) return;
+
+        const looksCompiled = stack.includes(".js");
+        const hasTypescript = stack.includes(".ts") === false;
+
+        if (!looksCompiled || !hasTypescript) return;
+
+        this.warnedAboutSourceMaps = true;
+
+        this.warn(
+            [
+                "Source maps may not be enabled.",
+                "Your application appears to be running compiled JavaScript.",
+                "For better stack traces run Node with:",
+                "",
+                "  node --enable-source-maps ...",
+                "",
+                "If this is a false alarm, disable this warning with:",
+                "",
+                "  Logger({ sourceMapWarning: false })",
+            ].join("\n")
+        );
+    }
+
     /**
      * Attempts to determine the location where the logger
      * was called from by inspecting the current stack trace.
@@ -201,6 +235,8 @@ export default class Logger {
     private getCaller(): string | undefined {
         const stack = new Error().stack;
 
+        if (this.options.sourceMapWarning) this.checkSourceMaps(stack);
+        
         if (!stack) return;
 
         const lines = stack.split("\n").slice(1);
