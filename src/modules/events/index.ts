@@ -3,7 +3,7 @@ import type Logger from "../logs/index.js";
 export type EventHandler<T extends unknown[]> =
     (...args: T) => void | Promise<void>;
 
-type EventSystemOptions = {
+export type EventSystemOptions = {
 	debug?: boolean;
 	warnOnNoListeners?: boolean;
 	catchErrors?: boolean;
@@ -104,7 +104,7 @@ export default class EventSystem<E extends { [K in keyof E]: any[] }> {
 		// `Logger` may lazily create its `EventSystem`, which would call
 		// this constructor again and lead to infinite recursion. Use the
 		// console for a lightweight, non-recursive initialization message.
-		console.log("EventSystem initialized with options:", this.options);
+		if (this.options.debug) console.log("EventSystem initialized with options:", this.options);
 	}
 
 	/**
