@@ -4,14 +4,32 @@
 [![npm downloads](https://img.shields.io/npm/dm/tico-basics)](https://www.npmjs.com/package/tico-basics)
 [![license](https://img.shields.io/npm/l/tico-basics)](https://github.com/tiaguinho2009/tico-basics/blob/main/LICENSE)
 
-**Tico Basics** is a lightweight utility package providing essential tools for **event handling** and **logging** in JavaScript/TypeScript projects.
+**Tico Basics** is a lightweight utility library for JavaScript and TypeScript that provides a strongly-typed event system and a modern, feature-rich console logger.
+
+Designed with simplicity, type safety and developer experience in mind.
 
 ---
 
 ## Features
 
-* **Events Module** – Utilities to handle events easily and efficiently
-* **Logs Module** – Colorful logging with `chalk` support for readable console output
+### EventSystem
+
+- Fully typed event emitter
+- Type-safe event names and arguments
+- Sync and async event emission
+- Listener management utilities
+- Configurable debugging and safety options
+
+### Logger
+
+- Colored console output using `chalk`
+- Optional timestamps
+- Readable multi-line formatting
+- Child loggers with inherited context
+- Built-in performance timers
+- Error formatting with stack traces
+- Optional caller debugging
+- Emits logger events through `EventSystem`
 
 ---
 
@@ -23,48 +41,115 @@ npm install tico-basics
 
 ---
 
-## Usage
+## Quick Example
 
-```typescript
+```ts
 import { EventSystem, Logger } from "tico-basics";
 
-// Define your event types (optional, recommended for TypeScript)
 interface Events {
-  "test": [string, number];
+    ready: [];
+    message: [string, number];
 }
 
-// Create a Logger instance
-const log = new Logger("MyApp");
+const logger = new Logger("Example");
 
-// Create an EventSystem instance with typed events
 const events = new EventSystem<Events>({
-  debug: true, // enables internal debug logging
-}, log);
+    debug: true,
+}, logger);
 
-// Logger usage
-log.info("Application starting");
-log.success("Application started");
-log.warn("This is a warning");
-log.error("This is an error");
+logger.success("Application started");
 
-// Measure execution time
-log.time("Startup");
-// ... initialization code
-log.timeEnd("Startup");
-
-// Register and emit events
-events.on("test", (message, code) => {
-  log.info(`Event received: ${message} (${code})`);
+events.on("message", (text, id) => {
+    logger.info(text, id);
 });
 
-events.emit("test", "Hello World", 123);
+events.emit("message", "Hello World", 123);
 ```
+
+---
+
+## EventSystem
+
+The `EventSystem` provides a lightweight, strongly-typed publish/subscribe system.
+
+### Features
+
+- Type-safe events
+- Synchronous and asynchronous events
+- One-time listeners
+- Listener counting
+- Automatic cleanup
+- Maximum listener limits
+- Optional debug logging
+
+### Available methods
+
+```ts
+on()
+once()
+prepend()
+off()
+
+emit()
+emitAsync()
+
+listenerCount()
+hasListeners()
+eventNames()
+
+removeAllListeners()
+setMaxListeners()
+```
+
+---
+
+## Logger
+
+The `Logger` provides colorful and structured console output with several quality-of-life features.
+
+### Available log levels
+
+```ts
+logger.log(...)
+logger.info(...)
+logger.success(...)
+logger.warn(...)
+logger.error(...)
+```
+
+### Additional utilities
+
+```ts
+logger.time(...)
+logger.timeLog(...)
+logger.timeEnd(...)
+
+logger.table(...)
+logger.clear()
+
+logger.child(...)
+logger.test(...)
+```
+
+---
+
+## TypeScript Support
+
+Tico Basics is written entirely in TypeScript and exports full type definitions.
+
+Event names and their arguments are fully inferred by the compiler, providing excellent autocomplete and compile-time safety.
 
 ---
 
 ## Build
 
-If you want to rebuild the package from source:
+Clone the repository and install dependencies:
+
+```bash
+npm install
+```
+
+Then build the project:
 
 ```bash
 npm run build
@@ -72,12 +157,36 @@ npm run build
 
 ---
 
+## Contributing
+
+Contributions are welcome!
+
+Please read the project's contribution guidelines before opening an Issue or Pull Request.
+
+- [Contributing Guide](./.github/CONTRIBUTING.md)
+- [Code of Conduct](./.github/CODE_OF_CONDUCT.md)
+
+---
+
+## Security
+
+If you discover a security vulnerability, please report it responsibly.
+
+See the project's [Security Policy](./.github/SECURITY.md) for reporting instructions.
+
+---
+
 ## License
 
-This project is licensed under **AGPL-3.0-only** – see the [LICENSE](https://github.com/tiaguinho2009/tico-basics/blob/main/LICENSE) file for details.
+Licensed under the **GNU Affero General Public License v3.0 only (AGPL-3.0-only)**.
+
+See the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## Author
 
-**tiaguinho2009** – [GitHub](https://github.com/tiaguinho2009)
+**Tico ("tiaguinho2009")**
+
+- GitHub: https://github.com/tiaguinho2009
+- Email: admin@tico09.com
