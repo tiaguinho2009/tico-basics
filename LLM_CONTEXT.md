@@ -2,32 +2,37 @@
 
 ## Purpose
 
-Internal utility package providing:
-- Strongly typed event system
-- Structured console logger with severity levels
-- Logger ↔ EventSystem integration
+Tico Basics is a lightweight utility library for Node.js providing:
 
-Designed for controlled environments (Node.js).  
-Not intended as a generic EventEmitter replacement.
+- A strongly typed event system (`EventSystem`)
+- A structured console logger (`Logger`)
+- Tight Logger ↔ EventSystem integration
+
+The library prioritizes:
+
+- Type safety
+- Minimal dependencies
+- Predictable runtime behavior
+- Developer experience
+
+It is **not** intended as a replacement for Node.js `EventEmitter`.
 
 ---
 
 # Public API
 
-## Root Exports
-
 ```ts
-export { 
-  EventSystem,
-  Logger,
-  type LoggerEvents,
-  type LoggerOptions
-}
-````
+import {
+    EventSystem,
+    Logger,
+    type LoggerEvents,
+    type LoggerOptions,
+} from "tico-basics";
+```
 
 ---
 
-# EventSystem<E>
+# EventSystem
 
 ## Generic Contract
 
@@ -35,24 +40,45 @@ export {
 class EventSystem<E extends { [K in keyof E]: any[] }>
 ```
 
-* `E` maps event names → tuple of argument types
-* Event names are strictly `keyof E`
-* Fully type-safe `on`, `once`, `emit`, etc.
+Each key represents an event name.
+
+Each value is the tuple of arguments that listeners receive.
+
+Example:
+
+```ts
+interface Events {
+    ready: [];
+    message: [string];
+    error: [Error];
+}
+```
+
+---
 
 ## Constructor
 
 ```ts
-new EventSystem(options?: EventSystemOptions, logger: Logger)
+new EventSystem(
+    options?: EventSystemOptions,
+    logger: Logger
+)
 ```
 
-### EventSystemOptions
+A `Logger` instance is **required**.
+
+Never construct an internal Logger inside EventSystem.
+
+---
+
+## EventSystemOptions
 
 ```ts
 {
-  debug?: boolean
-  warnOnNoListeners?: boolean
-  catchErrors?: boolean
-  maxListeners?: number
+    debug?: boolean;
+    warnOnNoListeners?: boolean;
+    catchErrors?: boolean;
+    maxListeners?: number;
 }
 ```
 
@@ -60,96 +86,10 @@ Defaults:
 
 ```ts
 {
-  debug: false,
-  warnOnNoListeners: true,
-  catchErrors: true,
-  maxListeners: Infinity
-}
-```
-
-### Important
-
-* Requires a `Logger` instance.
-* Must NOT create its own Logger (avoids recursive construction).
-* Listeners stored as:
-
-  ```ts
-  Map<event, Set<handler>>
-  ```
-
----
-
-## Core Methods
-
-```ts
-on<K extends keyof E>(event: K, handler: (...args: E[K]) => void): () => void
-once<K extends keyof E>(...)
-prepend<K extends keyof E>(...)
-off<K extends keyof E>(...)
-emit<K extends keyof E>(event: K, ...args: E[K]): boolean
-emitAsync<K extends keyof E>(...): Promise<boolean>
-listenerCount<K extends keyof E>(event: K): number
-hasListeners<K extends keyof E>(event: K): boolean
-eventNames(): (keyof E)[]
-setMaxListeners(n: number): void
-removeAllListeners<K extends keyof E>(event?: K): void
-```
-
-### Runtime Behavior
-
-* Duplicate handlers ignored (Set behavior)
-* Auto-clean empty listener sets
-* `emit()` is synchronous
-* `emitAsync()` awaits all handlers
-* Optional error catching inside handlers
-* Returns `false` if no listeners executed
-
----
-
-# Logger
-
-## Constructor
-
-```ts
-new Logger(name: string, options?: LoggerOptions, parentContext?: string[])
-```
-
-### LoggerOptions
-
-```ts
-{
-  clearOnInit?: boolean  // default true
-  useTimestamps?: boolean // default true
-}
-```
-
-## Context Model
-
-* Context is an array of strings
-* Child logger extends parent context
-* Final context format:
-
-  ```
-  Parent | Child | Submodule
-  ```
-
----
-
-## LoggerEvents
-
-```ts
-type LoggerEvents = {
-  log: [context: string[], ...args: any[]]
-  info: [context: string[], ...args: any[]]
-  success: [context: string[], ...args: any[]]
-  warn: [context: string[], ...args: any[]]
-  error: [context: string[], level: 0 | 1 | 2, ...args: any[]]
-  print: [
-    label: string,
-    colorFn: (msg: string) => string,
-    messages: any[],
-    output: "log" | "info" | "warn" | "error"
-  ]
+    debug: false,
+    warnOnNoListeners: true,
+    catchErrors: true,
+    maxListeners: Infinity
 }
 ```
 
@@ -158,78 +98,230 @@ type LoggerEvents = {
 ## Public Methods
 
 ```ts
-log(...messages: any[]): void
-info(...messages: any[]): void
-success(...messages: any[]): void
-warn(...messages: any[]): void
-error(level: 0 | 1 | 2, ...messages: any[]): void
+on()
+once()
+prepend()
+off()
 
-clear(): void
+emit()
+emitAsync()
 
-time(label: string): void
-timeLog(label: string): void
-timeEnd(label: string): void
+listenerCount()
+hasListeners()
+eventNames()
 
-table(data: any, ...properties: string[]): void
-
-child(name: string): Logger
-
-test(message?: string): void
+setMaxListeners()
+removeAllListeners()
 ```
 
 ---
 
-## Severity Levels
+## Runtime Behavior
 
-| Level | Meaning        |
-| ----- | -------------- |
-| 0     | ERROR          |
-| 1     | CRITICAL ERROR |
-| 2     | FATAL ERROR    |
+- Listener storage:
+
+```ts
+Map<event, Set<handler>>
+```
+
+- Duplicate listeners ignored.
+- Empty listener sets removed automatically.
+- `emit()` is synchronous.
+- `emitAsync()` awaits every listener.
+- Optional exception catching.
+- Emits return `false` when no listeners exist.
+
+---
+
+# Logger
+
+## Constructor
+
+```ts
+new Logger(
+    name: string,
+    options?: LoggerOptions,
+    parentContext?: string[]
+)
+```
+
+---
+
+## LoggerOptions
+
+```ts
+{
+    clearOnInit?: boolean;
+    useTimestamps?: boolean;
+
+    formatMultipleMessages?: boolean;
+
+    showTypes?: boolean;
+
+    debug?: boolean;
+
+    detectPromises?: boolean;
+
+    sourceMapWarning?: boolean;
+}
+```
+
+Defaults:
+
+```ts
+{
+    clearOnInit: true,
+    useTimestamps: true,
+    formatMultipleMessages: true,
+    showTypes: false,
+    debug: false,
+    detectPromises: true,
+    sourceMapWarning: true
+}
+```
+
+---
+
+## Context Model
+
+Logger context is hierarchical.
+
+Example:
+
+```text
+App
+App | Database
+App | Database | SQLite
+```
+
+Child loggers inherit every option from their parent.
+
+---
+
+## Logger Events
+
+```ts
+type LoggerEvents = {
+    log: [context: string[], ...args: any[]];
+    info: [context: string[], ...args: any[]];
+    success: [context: string[], ...args: any[]];
+    warn: [context: string[], ...args: any[]];
+    error: [context: string[], level: 0 | 1 | 2, ...args: any[]];
+    print: [
+        label: string,
+        colorFn: (msg: string) => string,
+        messages: unknown[],
+        output: "log" | "info" | "warn" | "error"
+    ];
+}
+```
+
+The Logger exposes:
+
+```ts
+logger.events
+```
+
+which is a fully typed `EventSystem<LoggerEvents>`.
+
+---
+
+## Public Methods
+
+### Logging
+
+```ts
+log()
+
+info()
+
+success()
+
+warn()
+
+error()
+```
+
+### Timers
+
+```ts
+time()
+
+timeLog()
+
+timeEnd()
+```
+
+### Utilities
+
+```ts
+clear()
+
+table()
+
+child()
+
+test()
+```
+
+---
+
+## Error Levels
+
+| Level | Label |
+|-------:|-------|
+| 0 | ERROR |
+| 1 | CRITICAL ERROR |
+| 2 | FATAL ERROR |
 
 ---
 
 ## Internal Behavior
 
-* Uses `chalk` for coloring
-* Emits events through `this.events`
-* `this.events` is:
+Logger internally:
+
+- Uses `chalk` for coloring.
+- Formats `Error` objects recursively.
+- Supports `Error.cause`.
+- Detects accidentally logged Promises.
+- Can display runtime caller locations.
+- Warns when Node source maps appear disabled.
+- Formats multiple messages as a tree.
+- Emits logger events through `logger.events`.
+
+All public logging methods ultimately delegate to:
 
 ```ts
-public events = new EventSystem<LoggerEvents>(...)
+print(...)
 ```
 
-* `warn()` prints using `console.error`
-* `error()` chooses color based on severity
-* `print()` builds final formatted string
+---
+
+# Design Principles
+
+- Type-safe API
+- Lightweight
+- Class-based
+- Predictable runtime behavior
+- No file logging
+- Console-oriented
+- No asynchronous logging pipeline
+- No external transports
 
 ---
 
-# Design Rules
-
-* Class-based
-* No default exports except internal module structure
-* EventSystem always depends on Logger
-* Logger always owns an EventSystem
-* Intended for Node.js console environments
-* Synchronous logging
-* No file output
-* No async logging pipeline
-
----
-
-# Usage Pattern Example
+# Usage Example
 
 ```ts
 const logger = new Logger("App");
 
 const events = new EventSystem<{
-  ready: []
-  message: [string]
+    ready: [];
+    message: [string];
 }>({}, logger);
 
-events.on("message", (text) => {
-  logger.info("Received:", text);
+events.on("message", text => {
+    logger.info(text);
 });
 
 events.emit("message", "Hello");
@@ -237,13 +329,15 @@ events.emit("message", "Hello");
 
 ---
 
-# Constraints for Code Generation
+# Code Generation Rules
 
-When generating code using this package:
+When generating code using Tico Basics:
 
-* Always pass a Logger instance into EventSystem
-* Do not create EventSystem without logger
-* Respect tuple argument typing strictly
-* Do not treat EventSystem as Node.js EventEmitter
-* Do not assume async by default
-* Logger methods are side-effectful (console output)
+- Always provide a `Logger` when constructing an `EventSystem`.
+- Never create an `EventSystem` without a logger.
+- Respect tuple typing exactly.
+- Do not treat EventSystem as Node.js EventEmitter.
+- Prefer typed event interfaces.
+- Logger methods perform console output immediately.
+- Use child loggers instead of manually concatenating contexts.
+- Prefer `emitAsync()` only when listeners are expected to return Promises.
